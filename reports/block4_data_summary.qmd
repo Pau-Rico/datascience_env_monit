@@ -105,3 +105,66 @@ ax.grid(True, alpha=0.3)
 plt.show()
 ```
 
+## C2. Data coverage
+
+The measured fraction is the share of half-hours with
+`NEE_VUT_REF_QC == 0`. Missing values and quality-control flags are not
+counted as measured.
+
+```{python}
+#| label: coverage-calculation
+#| include: false
+
+all_hh = read_all_hh(PROJECT_ROOT / "data" / "raw")
+all_hh["year"] = all_hh["time"].dt.year
+coverage = (
+    all_hh.groupby(["site", "year"])["NEE_VUT_REF_QC"]
+    .agg(share_measured=lambda values: (values == 0).mean())
+    .reset_index()
+)
+coverage["site"] = pd.Categorical(
+    coverage["site"], categories=SITE_IDS, ordered=True
+)
+coverage = coverage.sort_values(["site", "year"])
+coverage_matrix = coverage.pivot(
+    index="site", columns="year", values="share_measured"
+).reindex(SITE_IDS)
+best = coverage.loc[coverage["share_measured"].idxmax()]
+```
+
+```{python}
+#| label: coverage-heatmap
+#| fig-cap: "Share of half-hours with measured NEE for each site and year."
+
+fig, ax = plt.subplots(figsize=(12, 3.5))
+image = ax.imshow(
+    coverage_matrix.to_numpy(),
+    aspect="auto",
+    interpolation="nearest",
+    vmin=0,
+    vmax=1,
+    cmap="viridis",
+)
+ax.set(
+    xticks=range(len(coverage_matrix.columns)),
+    xticklabels=coverage_matrix.columns,
+    yticks=range(len(coverage_matrix.index)),
+    yticklabels=coverage_matrix.index,
+    xlabel="Year",
+    ylabel="Site",
+    title="Measured NEE coverage by site and year",
+)
+plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+colorbar = fig.colorbar(image, ax=ax)
+colorbar.set_label("Measured half-hours (share)")
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+print(
+    f"The best coverage occurs at {best['site']} in {int(best['year'])}, "
+    f"with {best['share_measured']:.1%} of half-hours measured."
+)
+```
+
