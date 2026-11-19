@@ -16,6 +16,7 @@ execute:
 
 from pathlib import Path
 import sys
+import zipfile
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -217,5 +218,83 @@ summary_table = pd.DataFrame(summary_rows).round(
     {"mean_or_annual_sum": 3, "minimum": 3, "maximum": 3, "missing_percent": 1}
 )
 summary_table
+```
+
+## C4. Daily time series
+
+Daily values are calculated as the mean of the available half-hourly fluxes.
+The carbon fluxes are converted from
+`umol CO2 m-2 s-1` to `g C m-2 d-1` using the assignment factor 1.0378.
+
+```{python}
+#| label: daily-aggregation
+#| include: false
+
+carbon_variables = ["NEE_VUT_REF", "GPP_NT_VUT_REF", "RECO_NT_VUT_REF"]
+daily_flux = (
+    all_hh.assign(date=all_hh["time"].dt.floor("D"))
+    .groupby(["site", "date"], as_index=False)[carbon_variables]
+    .mean()
+)
+daily_flux[carbon_variables] = daily_flux[carbon_variables] * 1.0378
+```
+
+```{python}
+#| label: daily-time-series
+#| fig-cap: "Daily NEE, GPP, and RECO for the five selected towers."
+
+fig, axes = plt.subplots(
+    nrows=len(SITE_IDS),
+    ncols=1,
+    figsize=(14, 14),
+    sharex=True,
+)
+for ax, site in zip(axes, SITE_IDS):
+    site_daily = daily_flux[daily_flux["site"] == site]
+    for variable, label in [
+        ("NEE_VUT_REF", "NEE"),
+        ("GPP_NT_VUT_REF", "GPP"),
+        ("RECO_NT_VUT_REF", "RECO"),
+    ]:
+        ax.plot(site_daily["date"], site_daily[variable], label=label, linewidth=0.5)
+    ax.set_ylabel("g C m-2 d-1")
+    ax.set_title(site, loc="left")
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="upper right", ncol=3)
+axes[-1].set_xlabel("Date")
+fig.suptitle("Daily carbon fluxes", y=0.995)
+fig.tight_layout()
+plt.show()
+```
+
+As a check, the daily aggregation for US-Mo1 was compared with its
+`FLUXMET_DD` file:
+
+```{python}
+#| label: daily-cross-check
+
+us_zip = next((PROJECT_ROOT / "data" / "raw").glob("*_US-Mo1_*.zip"))
+with zipfile.ZipFile(us_zip) as archive:
+    dd_name = next(name for name in archive.namelist() if "FLUXMET_DD" in name)
+    with archive.open(dd_name) as source:
+        daily_reference = pd.read_csv(
+            source,
+            na_values=[-9999],
+            usecols=lambda column: column in ["TIMESTAMP", *carbon_variables],
+            dtype={"TIMESTAMP": "string"},
+        )
+daily_reference["date"] = pd.to_datetime(
+    daily_reference["TIMESTAMP"], format="%Y%m%d"
+)
+daily_reference[carbon_variables] = daily_reference[carbon_variables] * 1.0378
+daily_us = daily_flux[daily_flux["site"] == "US-Mo1"]
+comparison = daily_us.merge(daily_reference, on="date", suffixes=("_from_hh", "_daily"))
+for variable in carbon_variables:
+    valid = comparison[[f"{variable}_from_hh", f"{variable}_daily"]].dropna()
+    difference = (
+        valid[f"{variable}_from_hh"] - valid[f"{variable}_daily"]
+    ).abs()
+    print(f"{variable}: {len(valid):,} overlapping days; "
+          f"maximum absolute difference = {difference.max():.4f}")
 ```
 
