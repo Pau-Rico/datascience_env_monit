@@ -1,0 +1,107 @@
+---
+title: "Data summary of my five flux towers"
+author: "Anna-Katharina Koehn"
+date: today
+format:
+  html:
+    toc: true
+    embed-resources: true
+execute:
+  warning: false
+---
+
+```{python}
+#| label: setup
+#| include: false
+
+from pathlib import Path
+import sys
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+PROJECT_ROOT = Path.cwd()
+if not (PROJECT_ROOT / "data").exists():
+    PROJECT_ROOT = Path("..").resolve()
+
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+from read_flux_data import read_all_hh
+
+SITE_IDS = ["AU-Wom", "JP-Fjy", "SN-Dhr", "US-Mo1", "DE-Hte"]
+snapshot_file = sorted((PROJECT_ROOT / "data" / "snapshots").glob("*.csv"))[-1]
+snapshot = pd.read_csv(snapshot_file)
+site_overview = snapshot[snapshot["site_id"].isin(SITE_IDS)].copy()
+site_overview["country"] = site_overview["site_id"].str[:2]
+site_overview["site_id"] = pd.Categorical(
+    site_overview["site_id"], categories=SITE_IDS, ordered=True
+)
+site_overview = site_overview.sort_values("site_id")
+```
+
+## C1. Site overview
+
+The five towers were selected from the latest snapshot file:
+
+```{python}
+print(snapshot_file.name)
+```
+
+The half-hourly timestamps are local standard time, as documented by the
+assignment.
+
+```{python}
+#| label: site-table
+#| tbl-cap: "Overview of the five selected FLUXNET towers."
+
+site_table = site_overview[
+    [
+        "site_id",
+        "site_name",
+        "country",
+        "igbp",
+        "location_lat",
+        "location_long",
+        "first_year",
+        "last_year",
+        "data_hub",
+        "product_citation",
+    ]
+].rename(
+    columns={
+        "location_lat": "lat",
+        "location_long": "lon",
+        "data_hub": "hub",
+        "product_citation": "data_citation",
+    }
+)
+site_table
+```
+
+```{python}
+#| label: site-map
+#| fig-cap: "Locations of the five selected FLUXNET towers."
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.scatter(
+    site_overview["location_long"],
+    site_overview["location_lat"],
+    s=70,
+    color="tab:blue",
+)
+for row in site_overview.itertuples():
+    ax.annotate(
+        row.site_id,
+        (row.location_long, row.location_lat),
+        xytext=(5, 5),
+                textcoords="offset points")
+ax.set(
+    xlim=(-180, 180),
+    ylim=(-60, 85),
+    xlabel="Longitude (degrees)",
+    ylabel="Latitude (degrees)",
+    title="Selected FLUXNET tower locations",
+)
+ax.grid(True, alpha=0.3)
+plt.show()
+```
+
