@@ -19,6 +19,7 @@ import sys
 import zipfile
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path.cwd()
@@ -370,5 +371,132 @@ for row_index, season in enumerate(seasons):
 fig.suptitle("Mean diurnal cycles by season", y=0.995)
 fig.tight_layout()
 plt.show()
+```
+
+## C6. My reading
+
+### Energy balance
+
+For the energy-balance check, only half-hours with measured H and LE
+(`H_F_MDS_QC == 0` and `LE_F_MDS_QC == 0`) are used. The tower with the most
+valid energy-balance observations is selected automatically.
+
+```{python}
+#| label: energy-balance-calculation
+#| include: false
+
+energy_columns = [
+    "NETRAD", "G_F_MDS", "H_F_MDS", "H_F_MDS_QC", "LE_F_MDS", "LE_F_MDS_QC"
+]
+energy_data = all_hh.dropna(subset=energy_columns).copy()
+energy_data = energy_data[
+    (energy_data["H_F_MDS_QC"] == 0)
+    & (energy_data["LE_F_MDS_QC"] == 0)
+]
+energy_data["available_energy"] = energy_data["NETRAD"] - energy_data["G_F_MDS"]
+energy_data["turbulent_energy"] = energy_data["H_F_MDS"] + energy_data["LE_F_MDS"]
+energy_data = energy_data.replace([np.inf, -np.inf], np.nan).dropna(
+    subset=["available_energy", "turbulent_energy"]
+)
+energy_site = energy_data["site"].value_counts().idxmax()
+energy_site_data = energy_data[energy_data["site"] == energy_site]
+energy_slope, energy_intercept = np.polyfit(
+    energy_site_data["available_energy"],
+    energy_site_data["turbulent_energy"],
+    1,
+)
+```
+
+```{python}
+#| label: energy-balance-plot
+#| fig-cap: "Energy balance for the tower with the most valid QC-filtered observations."
+
+x = energy_site_data["available_energy"]
+y = energy_site_data["turbulent_energy"]
+line_limits = [min(x.min(), y.min()), max(x.max(), y.max())]
+fig, ax = plt.subplots(figsize=(7, 6))
+ax.scatter(x, y, s=3, alpha=0.12, color="tab:blue", rasterized=True)
+ax.plot(line_limits, line_limits, color="black", linestyle="--", label="1:1 line")
+ax.plot(
+    line_limits,
+    energy_intercept + energy_slope * np.array(line_limits),
+    color="tab:red",
+    label=f"Linear fit (slope = {energy_slope:.2f})",
+)
+ax.set(
+    xlabel="NETRAD - G_F_MDS (W m-2)",
+    ylabel="H_F_MDS + LE_F_MDS (W m-2)",
+    title=f"Energy balance: {energy_site}",
+)
+ax.legend()
+ax.grid(True, alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+### Comparison of the five towers
+
+```{python}
+#| label: tower-comparison
+
+annual_gpp = (
+    daily_flux.assign(year=daily_flux["date"].dt.year)
+    .groupby(["site", "year"], observed=True)["GPP_NT_VUT_REF"]
+    .sum(min_count=1)
+    .groupby("site", observed=True)
+    .mean()
+)
+daily_with_seasons = daily_flux.copy()
+daily_with_seasons["month"] = daily_with_seasons["date"].dt.month
+daily_with_seasons["season"] = [
+    (southern_seasons if site_latitudes[site] < 0 else northern_seasons)[month]
+    for site, month in zip(
+        daily_with_seasons["site"], daily_with_seasons["month"]
+    )
+]
+seasonal_gpp = (
+    daily_with_seasons.groupby(["site", "season"], observed=True)[
+        "GPP_NT_VUT_REF"
+    ]
+    .mean()
+)
+seasonal_range = seasonal_gpp.groupby("site", observed=True).agg(
+    lambda values: values.max() - values.min()
+)
+mean_measured = coverage.groupby("site", observed=True)["share_measured"].mean()
+gap_filled = 1 - mean_measured
+
+highest_uptake_site = annual_gpp.idxmax()
+largest_cycle_site = seasonal_range.idxmax()
+most_gap_filled_site = gap_filled.idxmax()
+least_gap_filled_site = gap_filled.idxmin()
+
+from IPython.display import Markdown, display
+
+display(
+    Markdown(
+        " ".join(
+            [
+                f"Using daily GPP as the carbon-uptake measure, {highest_uptake_site} "
+                f"has the largest mean annual uptake at "
+                f"{annual_gpp[highest_uptake_site]:.1f} g C m-2 yr-1.",
+                f"The largest seasonal cycle in mean daily GPP occurs at "
+                f"{largest_cycle_site}, with a seasonal range of "
+                f"{seasonal_range[largest_cycle_site]:.2f} g C m-2 d-1.",
+                f"{least_gap_filled_site} has the smallest average gap-filled "
+                f"fraction ({gap_filled[least_gap_filled_site]:.1%}).",
+                f"The result that surprised me most was the large gap-filled "
+                f"fraction at {most_gap_filled_site} "
+                f"({gap_filled[most_gap_filled_site]:.1%}).",
+                "The towers represent forest, grassland, cropland, and wetland "
+                "ecosystems, so differences in carbon uptake and seasonality are "
+                "expected.",
+                "The comparison uses NEE_VUT_REF, GPP_NT_VUT_REF, and "
+                "RECO_NT_VUT_REF, with the quality flags used to distinguish "
+                "measured values from gap-filled values.",
+            ]
+        )
+    )
+)
 ```
 
