@@ -500,3 +500,28 @@ display(
 )
 ```
 
+## Data and citation
+
+The five site-specific data products and their citations are listed below.
+The files are from the ONEFlux v1.3 2026 release and were downloaded with
+the FLUXNET Shuttle from AmeriFlux, the ICOS Carbon Portal, and TERN under
+the CC-BY-4.0 licence.
+
+```{python}
+#| label: site-citations
+#| tbl-cap: "Citations for the five site-specific FLUXNET data products."
+
+site_overview[["site_id", "product_citation"]].rename(
+    columns={"product_citation": "citation"}
+)
+```
+
+I also cite Pastorello et al. (2020), *Scientific Data* 7, 225:
+<https://doi.org/10.1038/s41597-020-0534-3>.
+
+> FLUXNET data products were produced and harmonized by eddy covariance
+> regional networks and data processing centers, including AmeriFlux,
+> ChinaFlux, European Fluxes Database, ICOS, JapanFlux, KoFlux, OzFlux, SAEON,
+> and TERN. These products also include a modified version of ERA5 hourly data
+> provided by the Copernicus Climate Change Service.
+

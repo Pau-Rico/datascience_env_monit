@@ -2239,6 +2239,7 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
   <li><a href="#energy-balance" id="toc-energy-balance" class="nav-link" data-scroll-target="#energy-balance">Energy balance</a></li>
   <li><a href="#comparison-of-the-five-towers" id="toc-comparison-of-the-five-towers" class="nav-link" data-scroll-target="#comparison-of-the-five-towers">Comparison of the five towers</a></li>
   </ul></li>
+  <li><a href="#data-and-citation" id="toc-data-and-citation" class="nav-link" data-scroll-target="#data-and-citation">Data and citation</a></li>
   </ul>
 </nav>
 </div>
@@ -2278,7 +2279,7 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
 <section id="c1.-site-overview" class="level2">
 <h2 class="anchored" data-anchor-id="c1.-site-overview">C1. Site overview</h2>
 <p>The five towers were selected from the latest snapshot file:</p>
-<div id="60e77bc5" class="cell" data-execution_count="2">
+<div id="e1722b96" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(snapshot_file.name)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>fluxnet_shuttle_snapshot_20261119T171238.csv</code></pre>
@@ -2470,7 +2471,7 @@ var requirejs,require,define;(function(global,setTimeout){var req,s,head,baseEle
 </div>
 </div>
 </div>
-<div id="a78654d9" class="cell" data-execution_count="7">
+<div id="5056b31b" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f&quot;The best coverage occurs at </span><span class="sc">{</span>best[<span class="st">&#39;site&#39;</span>]<span class="sc">}</span><span class="ss"> in </span><span class="sc">{</span><span class="bu">int</span>(best[<span class="st">&#39;year&#39;</span>])<span class="sc">}</span><span class="ss">, &quot;</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f&quot;with </span><span class="sc">{</span>best[<span class="st">&#39;share_measured&#39;</span>]<span class="sc">:.1%}</span><span class="ss"> of half-hours measured.&quot;</span></span>
@@ -3174,6 +3175,63 @@ RECO_NT_VUT_REF: 3,381 overlapping days; maximum absolute difference = 0.5664</c
 </div>
 </div>
 </section>
+</section>
+<section id="data-and-citation" class="level2">
+<h2 class="anchored" data-anchor-id="data-and-citation">Data and citation</h2>
+<p>The five site-specific data products and their citations are listed below. The files are from the ONEFlux v1.3 2026 release and were downloaded with the FLUXNET Shuttle from AmeriFlux, the ICOS Carbon Portal, and TERN under the CC-BY-4.0 licence.</p>
+<div class="cell" data-tbl-cap="Citations for the five site-specific FLUXNET data products." data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>site_overview[[<span class="st">&quot;site_id&quot;</span>, <span class="st">&quot;product_citation&quot;</span>]].rename(</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    columns<span class="op">=</span>{<span class="st">&quot;product_citation&quot;</span>: <span class="st">&quot;citation&quot;</span>}</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="site-citations" class="cell-output cell-output-display" data-execution_count="17">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<caption>Citations for the five site-specific FLUXNET data products.</caption>
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">site_id</th>
+<th data-quarto-table-cell-role="th">citation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">765</th>
+<td>AU-Wom</td>
+<td>Arndt, S., Griebel, A., Hinko-Najera, N., Loew...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">452</th>
+<td>JP-Fjy</td>
+<td>Inoue, Y., Kominami, Y., Miyama, T., Mizoguchi...</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">572</th>
+<td>SN-Dhr</td>
+<td>Ardo, J., Fensholt, R., Tagesson, T., Tagesson...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">202</th>
+<td>US-Mo1</td>
+<td>Adam Schreiner-McGraw (2026), AmeriFlux FLUXNE...</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">670</th>
+<td>DE-Hte</td>
+<td>Koebsch, F., Jurasinski, G. (2026). Fluxnet Ar...</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>I also cite Pastorello et al. (2020), <em>Scientific Data</em> 7, 225: <a href="https://doi.org/10.1038/s41597-020-0534-3" class="uri">https://doi.org/10.1038/s41597-020-0534-3</a>.</p>
+<blockquote class="blockquote">
+<p>FLUXNET data products were produced and harmonized by eddy covariance regional networks and data processing centers, including AmeriFlux, ChinaFlux, European Fluxes Database, ICOS, JapanFlux, KoFlux, OzFlux, SAEON, and TERN. These products also include a modified version of ERA5 hourly data provided by the Copernicus Climate Change Service.</p>
+</blockquote>
 </section>
 
 </main>
