@@ -168,3 +168,54 @@ print(
 )
 ```
 
+## C3. Summary statistics
+
+The table reports the variables used for the data summary. The missing
+percentage is calculated from the half-hourly records. For `P_F`, the mean
+column is the mean annual precipitation sum rather than the mean half-hour
+value.
+
+```{python}
+#| label: summary-statistics
+#| tbl-cap: "Summary statistics for the selected half-hourly variables."
+
+summary_variables = {
+    "TA_F": "TA_F (deg C)",
+    "SW_IN_F": "SW_IN_F (W m-2)",
+    "VPD_F": "VPD_F (kPa)",
+    "P_F": "P_F (mm; annual sum)",
+    "NEE_VUT_REF": "NEE_VUT_REF (umol CO2 m-2 s-1)",
+    "GPP_NT_VUT_REF": "GPP_NT_VUT_REF (umol CO2 m-2 s-1)",
+    "RECO_NT_VUT_REF": "RECO_NT_VUT_REF (umol CO2 m-2 s-1)",
+    "H_F_MDS": "H_F_MDS (W m-2)",
+    "LE_F_MDS": "LE_F_MDS (W m-2)",
+}
+
+summary_rows = []
+for site, site_data in all_hh.groupby("site", sort=False):
+    for variable, label in summary_variables.items():
+        values = site_data[variable]
+        mean_value = values.mean()
+        if variable == "P_F":
+            annual_sum = (
+                site_data.groupby("year", observed=True)[variable]
+                .sum(min_count=1)
+            )
+            mean_value = annual_sum.mean()
+        summary_rows.append(
+            {
+                "site": site,
+                "variable": label,
+                "mean_or_annual_sum": mean_value,
+                "minimum": values.min(),
+                "maximum": values.max(),
+                "missing_percent": values.isna().mean() * 100,
+            }
+        )
+
+summary_table = pd.DataFrame(summary_rows).round(
+    {"mean_or_annual_sum": 3, "minimum": 3, "maximum": 3, "missing_percent": 1}
+)
+summary_table
+```
+
