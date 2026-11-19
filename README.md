@@ -12,6 +12,7 @@ about two hours of assignment work. Everything you need for the assignments is i
 | Block | Topic | Assignment |
 | --- | --- | --- |
 | 2 | Git and GitHub, your first job on bwUniCluster | [Block 2 assignment](assignments/block-2-git-github-cluster.md) |
+| 4 | FLUXNET data summary | [Block 4 assignment](assignments/block-4-flux-data-summary.md) |
 
 More assignments are added here as the course goes on.
 
@@ -34,6 +35,18 @@ More assignments are added here as the course goes on.
 4. Hand in what the assignment asks for on ILIAS.
 
 Do not push to this repository. You work in your fork, so your changes never touch the course material.
+
+## Block 4 report
+
+The report source is [reports/block4_data_summary.qmd](reports/block4_data_summary.qmd).
+With the downloaded data in `data/raw/`, render the embedded HTML report with:
+
+```bash
+quarto render reports/block4_data_summary.qmd
+```
+
+The Python report environment needs pandas, matplotlib, and Jupyter. Install them
+in the selected Python environment with `python -m pip install pandas matplotlib jupyter`.
 
 ## Before you start
 

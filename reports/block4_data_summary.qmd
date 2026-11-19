@@ -175,7 +175,8 @@ print(
 The table reports the variables used for the data summary. The missing
 percentage is calculated from the half-hourly records. For `P_F`, the mean
 column is the mean annual precipitation sum rather than the mean half-hour
-value.
+value. `GPP_NT_VUT_REF` and `RECO_NT_VUT_REF` are the nighttime-partitioned
+products; no separate daytime partitioning was used.
 
 ```{python}
 #| label: summary-statistics
@@ -511,8 +512,11 @@ the CC-BY-4.0 licence.
 #| label: site-citations
 #| tbl-cap: "Citations for the five site-specific FLUXNET data products."
 
-site_overview[["site_id", "product_citation"]].rename(
-    columns={"product_citation": "citation"}
+site_overview[["site_id", "fluxnet_product_name", "product_citation"]].rename(
+    columns={
+        "fluxnet_product_name": "downloaded_product_file",
+        "product_citation": "citation",
+    }
 )
 ```
 
