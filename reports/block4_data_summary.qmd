@@ -1,6 +1,6 @@
 ---
 title: "Data summary of my five flux towers"
-author: "Anna-Katharina Koehn"
+author: "Paul Eberle"
 date: today
 format:
   html:
