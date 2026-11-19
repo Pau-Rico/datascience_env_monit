@@ -298,3 +298,77 @@ for variable in carbon_variables:
           f"maximum absolute difference = {difference.max():.4f}")
 ```
 
+## C5. Diurnal cycles
+
+The mean daily course is calculated by local-standard-time hour. Seasons use
+December-February, March-May, June-August, and September-November. For sites
+south of the equator, the season names are reversed so that December-February
+is summer and June-August is winter.
+
+```{python}
+#| label: diurnal-calculation
+#| include: false
+
+northern_seasons = {
+    12: "winter", 1: "winter", 2: "winter",
+    3: "spring", 4: "spring", 5: "spring",
+    6: "summer", 7: "summer", 8: "summer",
+    9: "autumn", 10: "autumn", 11: "autumn",
+}
+southern_seasons = {
+    12: "summer", 1: "summer", 2: "summer",
+    3: "autumn", 4: "autumn", 5: "autumn",
+    6: "winter", 7: "winter", 8: "winter",
+    9: "spring", 10: "spring", 11: "spring",
+}
+site_latitudes = site_overview.set_index("site_id")["location_lat"]
+all_hh["hour"] = all_hh["time"].dt.hour
+all_hh["season"] = [
+    (southern_seasons if site_latitudes[site] < 0 else northern_seasons)[month]
+    for site, month in zip(all_hh["site"], all_hh["time"].dt.month)
+]
+```
+
+```{python}
+#| label: diurnal-plot
+#| fig-cap: "Mean diurnal cycles of NEE and LE by season and site."
+
+seasons = ["summer", "autumn", "winter", "spring"]
+diurnal_variables = [
+    ("NEE_VUT_REF", "NEE (umol CO2 m-2 s-1)"),
+    ("LE_F_MDS", "LE (W m-2)"),
+]
+colors = {
+    site: plt.cm.tab10(index)
+    for index, site in enumerate(SITE_IDS)
+}
+fig, axes = plt.subplots(
+    nrows=len(seasons),
+    ncols=len(diurnal_variables),
+    figsize=(14, 14),
+    sharex=True,
+)
+for row_index, season in enumerate(seasons):
+    season_data = all_hh[all_hh["season"] == season]
+    for column_index, (variable, axis_label) in enumerate(diurnal_variables):
+        ax = axes[row_index, column_index]
+        for site in SITE_IDS:
+            means = (
+                season_data[season_data["site"] == site]
+                .groupby("hour", observed=True)[variable]
+                .mean()
+            )
+            ax.plot(means.index, means.values, label=site, color=colors[site])
+        ax.set_title(f"{season.title()} - {variable.split('_')[0]}")
+        ax.set_ylabel(axis_label)
+        ax.set_xticks(range(0, 24, 3))
+        ax.grid(True, alpha=0.25)
+        if row_index == len(seasons) - 1:
+            ax.set_xlabel("Hour of day (local standard time)")
+        if row_index == 0 and column_index == 1:
+            ax.legend(loc="upper right", fontsize="small")
+fig.suptitle("Mean diurnal cycles by season", y=0.995)
+fig.tight_layout()
+plt.show()
+```
+
