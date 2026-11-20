@@ -29,7 +29,7 @@ if not (PROJECT_ROOT / "data").exists():
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from read_flux_data import read_all_hh
 
-SITE_IDS = ["AU-Wom", "JP-Fjy", "SN-Dhr", "US-Mo1", "DE-Hte"]
+SITE_IDS = ["JP-Ynf", "BE-Bra", "CH-Oe1", "US-MN2", "AU-TTE"]
 snapshot_file = sorted((PROJECT_ROOT / "data" / "snapshots").glob("*.csv"))[-1]
 snapshot = pd.read_csv(snapshot_file)
 site_overview = snapshot[snapshot["site_id"].isin(SITE_IDS)].copy()
@@ -269,13 +269,13 @@ fig.tight_layout()
 plt.show()
 ```
 
-As a check, the daily aggregation for US-Mo1 was compared with its
+As a check, the daily aggregation for US-MN2 was compared with its
 `FLUXMET_DD` file:
 
 ```{python}
 #| label: daily-cross-check
 
-us_zip = next((PROJECT_ROOT / "data" / "raw").glob("*_US-Mo1_*.zip"))
+us_zip = next((PROJECT_ROOT / "data" / "raw").glob("*_US-MN2_*.zip"))
 with zipfile.ZipFile(us_zip) as archive:
     dd_name = next(name for name in archive.namelist() if "FLUXMET_DD" in name)
     with archive.open(dd_name) as source:
@@ -289,7 +289,7 @@ daily_reference["date"] = pd.to_datetime(
     daily_reference["TIMESTAMP"], format="%Y%m%d"
 )
 daily_reference[carbon_variables] = daily_reference[carbon_variables] * 1.0378
-daily_us = daily_flux[daily_flux["site"] == "US-Mo1"]
+daily_us = daily_flux[daily_flux["site"] == "US-MN2"]
 comparison = daily_us.merge(daily_reference, on="date", suffixes=("_from_hh", "_daily"))
 for variable in carbon_variables:
     valid = comparison[[f"{variable}_from_hh", f"{variable}_daily"]].dropna()
