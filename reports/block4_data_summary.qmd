@@ -111,7 +111,8 @@ plt.show()
 
 The measured fraction is the share of half-hours with
 `NEE_VUT_REF_QC == 0`. Missing values and quality-control flags are not
-counted as measured.
+counted as measured. AU-TTE does not provide the VUT reference columns; for
+that tower the coverage fallback is `NEE_CUT_REF_QC == 0`.
 
 ```{python}
 #| label: coverage-calculation
@@ -119,10 +120,12 @@ counted as measured.
 
 all_hh = read_all_hh(PROJECT_ROOT / "data" / "raw")
 all_hh["year"] = all_hh["time"].dt.year
+nee_qc = all_hh["NEE_VUT_REF_QC"].combine_first(all_hh["NEE_CUT_REF_QC"])
+all_hh["measured_nee"] = nee_qc.eq(0).where(nee_qc.notna(), pd.NA)
 coverage = (
-    all_hh.groupby(["site", "year"])["NEE_VUT_REF_QC"]
-    .agg(share_measured=lambda values: (values == 0).mean())
-    .reset_index()
+    all_hh.groupby(["site", "year"], observed=True)["measured_nee"]
+    .mean()
+    .reset_index(name="share_measured")
 )
 coverage["site"] = pd.Categorical(
     coverage["site"], categories=SITE_IDS, ordered=True
@@ -131,7 +134,9 @@ coverage = coverage.sort_values(["site", "year"])
 coverage_matrix = coverage.pivot(
     index="site", columns="year", values="share_measured"
 ).reindex(SITE_IDS)
-best = coverage.loc[coverage["share_measured"].idxmax()]
+coverage_matrix = coverage_matrix.astype(float)
+available_coverage = coverage.dropna(subset=["share_measured"])
+best = available_coverage.loc[available_coverage["share_measured"].idxmax()]
 ```
 
 ```{python}

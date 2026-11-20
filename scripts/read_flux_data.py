@@ -23,6 +23,8 @@ KEEP_COLUMNS = [
     "LE_F_MDS_QC",
     "NEE_VUT_REF",
     "NEE_VUT_REF_QC",
+    "NEE_CUT_REF",
+    "NEE_CUT_REF_QC",
     "GPP_NT_VUT_REF",
     "RECO_NT_VUT_REF",
 ]
