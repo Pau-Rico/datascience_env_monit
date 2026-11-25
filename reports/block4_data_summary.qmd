@@ -10,6 +10,8 @@ execute:
   warning: false
 ---
 
+**Fork and source on GitHub:** [Pau-Rico/datascience_env_monit](https://github.com/Pau-Rico/datascience_env_monit)
+
 ```{python}
 #| label: setup
 #| include: false
