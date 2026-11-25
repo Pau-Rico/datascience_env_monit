@@ -111,8 +111,8 @@ plt.show()
 
 The measured fraction is the share of half-hours with
 `NEE_VUT_REF_QC == 0`. Missing values and quality-control flags are not
-counted as measured. AU-TTE does not provide the VUT reference columns; for
-that tower the coverage fallback is `NEE_CUT_REF_QC == 0`.
+counted as measured. AU-TTE has no usable VUT reference NEE values, so its
+coverage check uses `NEE_CUT_REF_QC == 0`.
 
 ```{python}
 #| label: coverage-calculation
@@ -120,7 +120,20 @@ that tower the coverage fallback is `NEE_CUT_REF_QC == 0`.
 
 all_hh = read_all_hh(PROJECT_ROOT / "data" / "raw")
 all_hh["year"] = all_hh["time"].dt.year
-nee_qc = all_hh["NEE_VUT_REF_QC"].combine_first(all_hh["NEE_CUT_REF_QC"])
+cut_site = all_hh["site"].eq("AU-TTE")
+all_hh["NEE_ANALYSIS"] = all_hh["NEE_VUT_REF"].where(
+    ~cut_site, all_hh["NEE_CUT_REF"]
+)
+all_hh["NEE_ANALYSIS_QC"] = all_hh["NEE_VUT_REF_QC"].where(
+    ~cut_site, all_hh["NEE_CUT_REF_QC"]
+)
+all_hh["GPP_NT_ANALYSIS"] = all_hh["GPP_NT_VUT_REF"].where(
+    ~cut_site, all_hh["GPP_NT_CUT_REF"]
+)
+all_hh["RECO_NT_ANALYSIS"] = all_hh["RECO_NT_VUT_REF"].where(
+    ~cut_site, all_hh["RECO_NT_CUT_REF"]
+)
+nee_qc = all_hh["NEE_ANALYSIS_QC"]
 all_hh["measured_nee"] = nee_qc.eq(0).where(nee_qc.notna(), pd.NA)
 coverage = (
     all_hh.groupby(["site", "year"], observed=True)["measured_nee"]
@@ -175,13 +188,47 @@ print(
 )
 ```
 
+The ZIP files have continuous half-hour timestamp rows; the gaps below are
+missing flux values in those rows, not missing chunks from a failed download.
+QC values 1–3 indicate gap-filled estimates rather than direct measurements.
+This table lists site-years where some NEE values are actually unavailable.
+
+```{python}
+#| label: missing-nee-years
+#| tbl-cap: "Site-years with missing NEE reference values."
+
+nee_year_availability = (
+    all_hh.groupby(["site", "year"], observed=True)
+    .agg(
+        half_hours=("NEE_ANALYSIS", "size"),
+        available_nee=("NEE_ANALYSIS", "count"),
+    )
+    .reset_index()
+)
+nee_year_availability["available_nee_percent"] = (
+    100
+    * nee_year_availability["available_nee"]
+    / nee_year_availability["half_hours"]
+)
+missing_nee_years = nee_year_availability.loc[
+    nee_year_availability["available_nee"] < nee_year_availability["half_hours"],
+    ["site", "year", "available_nee_percent"],
+].rename(columns={"available_nee_percent": "NEE available (%)"}).reset_index(drop=True)
+missing_nee_years["NEE available (%)"] = missing_nee_years[
+    "NEE available (%)"
+].round(1)
+missing_nee_years
+```
+
 ## C3. Summary statistics
 
 The table reports the variables used for the data summary. The missing
 percentage is calculated from the half-hourly records. For `P_F`, the mean
 column is the mean annual precipitation sum rather than the mean half-hour
-value. `GPP_NT_VUT_REF` and `RECO_NT_VUT_REF` are the nighttime-partitioned
-products; no separate daytime partitioning was used.
+value. `GPP_NT` and `RECO_NT` are the nighttime-partitioned products; no
+separate daytime partitioning was used. VUT reference products are used
+where supplied; AU-TTE uses the corresponding CUT reference products because
+its VUT carbon series are empty.
 
 ```{python}
 #| label: summary-statistics
@@ -192,9 +239,9 @@ summary_variables = {
     "SW_IN_F": "SW_IN_F (W m-2)",
     "VPD_F": "VPD_F (kPa)",
     "P_F": "P_F (mm; annual sum)",
-    "NEE_VUT_REF": "NEE_VUT_REF (umol CO2 m-2 s-1)",
-    "GPP_NT_VUT_REF": "GPP_NT_VUT_REF (umol CO2 m-2 s-1)",
-    "RECO_NT_VUT_REF": "RECO_NT_VUT_REF (umol CO2 m-2 s-1)",
+    "NEE_ANALYSIS": "NEE reference (VUT; CUT for AU-TTE; umol CO2 m-2 s-1)",
+    "GPP_NT_ANALYSIS": "GPP_NT reference (VUT; CUT for AU-TTE; umol CO2 m-2 s-1)",
+    "RECO_NT_ANALYSIS": "RECO_NT reference (VUT; CUT for AU-TTE; umol CO2 m-2 s-1)",
     "H_F_MDS": "H_F_MDS (W m-2)",
     "LE_F_MDS": "LE_F_MDS (W m-2)",
 }
@@ -229,7 +276,9 @@ summary_table
 
 ## C4. Daily time series
 
-Daily values are calculated as the mean of the available half-hourly fluxes.
+Daily values are calculated as the mean of available half-hourly fluxes.
+VUT reference products are used where supplied; AU-TTE uses the corresponding
+CUT reference products.
 The carbon fluxes are converted from
 `umol CO2 m-2 s-1` to `g C m-2 d-1` using the assignment factor 1.0378.
 
@@ -237,13 +286,15 @@ The carbon fluxes are converted from
 #| label: daily-aggregation
 #| include: false
 
-carbon_variables = ["NEE_VUT_REF", "GPP_NT_VUT_REF", "RECO_NT_VUT_REF"]
+carbon_variables = ["NEE_ANALYSIS", "GPP_NT_ANALYSIS", "RECO_NT_ANALYSIS"]
+cross_check_variables = ["NEE_VUT_REF", "GPP_NT_VUT_REF", "RECO_NT_VUT_REF"]
+daily_variables = carbon_variables + cross_check_variables
 daily_flux = (
     all_hh.assign(date=all_hh["time"].dt.floor("D"))
-    .groupby(["site", "date"], as_index=False)[carbon_variables]
+    .groupby(["site", "date"], as_index=False)[daily_variables]
     .mean()
 )
-daily_flux[carbon_variables] = daily_flux[carbon_variables] * 1.0378
+daily_flux[daily_variables] = daily_flux[daily_variables] * 1.0378
 ```
 
 ```{python}
@@ -259,9 +310,9 @@ fig, axes = plt.subplots(
 for ax, site in zip(axes, SITE_IDS):
     site_daily = daily_flux[daily_flux["site"] == site]
     for variable, label in [
-        ("NEE_VUT_REF", "NEE"),
-        ("GPP_NT_VUT_REF", "GPP"),
-        ("RECO_NT_VUT_REF", "RECO"),
+        ("NEE_ANALYSIS", "NEE"),
+        ("GPP_NT_ANALYSIS", "GPP"),
+        ("RECO_NT_ANALYSIS", "RECO"),
     ]:
         ax.plot(site_daily["date"], site_daily[variable], label=label, linewidth=0.5)
     ax.set_ylabel("g C m-2 d-1")
@@ -287,16 +338,18 @@ with zipfile.ZipFile(us_zip) as archive:
         daily_reference = pd.read_csv(
             source,
             na_values=[-9999],
-            usecols=lambda column: column in ["TIMESTAMP", *carbon_variables],
+            usecols=lambda column: column in ["TIMESTAMP", *cross_check_variables],
             dtype={"TIMESTAMP": "string"},
         )
 daily_reference["date"] = pd.to_datetime(
     daily_reference["TIMESTAMP"], format="%Y%m%d"
 )
-daily_reference[carbon_variables] = daily_reference[carbon_variables] * 1.0378
+daily_reference[cross_check_variables] = (
+    daily_reference[cross_check_variables] * 1.0378
+)
 daily_us = daily_flux[daily_flux["site"] == "US-MN2"]
 comparison = daily_us.merge(daily_reference, on="date", suffixes=("_from_hh", "_daily"))
-for variable in carbon_variables:
+for variable in cross_check_variables:
     valid = comparison[[f"{variable}_from_hh", f"{variable}_daily"]].dropna()
     difference = (
         valid[f"{variable}_from_hh"] - valid[f"{variable}_daily"]
@@ -342,7 +395,7 @@ all_hh["season"] = [
 
 seasons = ["summer", "autumn", "winter", "spring"]
 diurnal_variables = [
-    ("NEE_VUT_REF", "NEE (umol CO2 m-2 s-1)"),
+    ("NEE_ANALYSIS", "NEE (umol CO2 m-2 s-1)"),
     ("LE_F_MDS", "LE (W m-2)"),
 ]
 colors = {
@@ -447,7 +500,7 @@ plt.show()
 
 annual_gpp = (
     daily_flux.assign(year=daily_flux["date"].dt.year)
-    .groupby(["site", "year"], observed=True)["GPP_NT_VUT_REF"]
+    .groupby(["site", "year"], observed=True)["GPP_NT_ANALYSIS"]
     .sum(min_count=1)
     .groupby("site", observed=True)
     .mean()
@@ -462,7 +515,7 @@ daily_with_seasons["season"] = [
 ]
 seasonal_gpp = (
     daily_with_seasons.groupby(["site", "season"], observed=True)[
-        "GPP_NT_VUT_REF"
+        "GPP_NT_ANALYSIS"
     ]
     .mean()
 )
@@ -497,9 +550,9 @@ display(
                 "The towers represent forest, grassland, cropland, and wetland "
                 "ecosystems, so differences in carbon uptake and seasonality are "
                 "expected.",
-                "The comparison uses NEE_VUT_REF, GPP_NT_VUT_REF, and "
-                "RECO_NT_VUT_REF, with the quality flags used to distinguish "
-                "measured values from gap-filled values.",
+                "VUT_REF products are used where available; AU-TTE uses the "
+                "corresponding CUT_REF products because its VUT carbon columns "
+                "are empty. QC flags distinguish measured from gap-filled values.",
             ]
         )
     )

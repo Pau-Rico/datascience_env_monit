@@ -27,6 +27,8 @@ KEEP_COLUMNS = [
     "NEE_CUT_REF_QC",
     "GPP_NT_VUT_REF",
     "RECO_NT_VUT_REF",
+    "GPP_NT_CUT_REF",
+    "RECO_NT_CUT_REF",
 ]
 
 
