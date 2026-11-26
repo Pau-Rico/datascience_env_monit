@@ -1,0 +1,496 @@
+---
+title: "For each tower, how do annual mean air temperature and annual precipitation compare with its WorldClim 1970–2000 normal?"
+author:
+  - name: Paul Eberle
+    affiliation: Student Number 30
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    embed-resources: true
+execute:
+  warning: false
+---
+
+# E1. Question and hypothesis
+
+**Question.** For each tower, how do annual mean air temperature and annual
+precipitation compare with its WorldClim 1970–2000 normal?
+
+**Hypothesis.** I expect annual temperatures to be mostly above the
+1970–2000 normal. I expect precipitation to vary between towers and years.
+Recent warming may raise temperatures above the older normal. Precipitation
+may change more from year to year and from site to site.
+
+The five towers are in different regions and ecosystems. They are useful for
+comparing sites, but they do not represent all climates. Their records cover
+different periods, so the sites are not compared over the same years.
+
+# E2. Data
+
+The analysis uses FLUXNET daily data and two Block 5 datasets: WorldClim and
+ERA5-Land.
+
+| Dataset | Variables used | Spatial resolution | Time resolution and period | Download date | Script and changes | Citation |
+|---|---|---|---|---|---|---|
+| FLUXNET | `TA_F` (air temperature), `TA_F_QC` (temperature QC), `P_F` (precipitation), `P_F_QC` (precipitation QC) | Tower measurement, approximate flux footprint 100 m–1 km | Daily, 1999–2025. Site periods are in Table @tbl-sites | 20 Nov 2026 | Existing `FLUXMET_DD` files in `data/raw`. QC fields were read directly because `09_merge.py` omits them | Site data-product citations and acknowledgement in E6, Pastorello et al. (2020) |
+| WorldClim 2.1 | BIO1 (temperature normal, °C), BIO12 (precipitation normal, mm) | 5 arc-minutes, approximately 9 km | 1970–2000 climate normals | 20 Nov 2026 | `scripts/block5/02_worldclim.py`, 5′ resolution and nearest-cell sampling | Fick & Hijmans (2017) |
+| ERA5-Land | `t2m_C` (2 m air temperature) | 0.1°, approximately 9 km | Daily means derived from hourly data. Last available 8–10 tower years, listed in Table @tbl-sites | 20 and 25 Nov 2026 | `scripts/block5/01_era5land.py`, 10-year setting. No analysis settings changed | Muñoz-Sabater et al. (2021) |
+
+ERA5-Land daily means use UTC days. The downloaded ERA5-Land files have no
+precipitation values, so I use FLUXNET for precipitation.
+
+```{python}
+#| label: setup
+#| include: false
+
+from pathlib import Path
+import re
+import zipfile
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib.lines import Line2D
+
+PROJECT_ROOT = Path.cwd()
+if not (PROJECT_ROOT / "data" / "raw").exists():
+    PROJECT_ROOT = Path("..").resolve()
+
+SITE_IDS = ["AU-TTE", "BE-Bra", "CH-Oe1", "JP-Ynf", "US-MN2"]
+QC_THRESHOLD = 0.90
+site_colors = dict(zip(SITE_IDS, plt.get_cmap("tab10").colors[:5]))
+
+worldclim_path = (
+    PROJECT_ROOT / "data" / "external" / "worldclim" / "worldclim_bio_my_sites.csv"
+)
+if not worldclim_path.exists():
+    raise FileNotFoundError(f"WorldClim output not found: {worldclim_path}")
+worldclim = pd.read_csv(worldclim_path)
+worldclim = worldclim[["site_id", "BIO1", "BIO12"]].copy()
+
+flux_parts = []
+required_columns = {"TIMESTAMP", "TA_F", "TA_F_QC", "P_F", "P_F_QC"}
+for zip_path in sorted((PROJECT_ROOT / "data" / "raw").glob("*FLUXNET*.zip")):
+    site_match = re.match(r"^[A-Z]+_([A-Z]{2}-[A-Za-z0-9]{3})_", zip_path.name)
+    if not site_match or site_match.group(1) not in SITE_IDS:
+        continue
+    with zipfile.ZipFile(zip_path) as archive:
+        daily_members = [
+            member for member in archive.namelist() if "FLUXMET_DD" in member
+        ]
+        if not daily_members:
+            continue
+        with archive.open(daily_members[0]) as daily_file:
+            flux = pd.read_csv(
+                daily_file,
+                na_values=[-9999],
+                usecols=lambda column: column in required_columns,
+                dtype={"TIMESTAMP": str},
+            )
+    flux["date"] = pd.to_datetime(flux.pop("TIMESTAMP"), format="%Y%m%d")
+    flux["site_id"] = site_match.group(1)
+    flux_parts.append(flux)
+
+if not flux_parts:
+    raise FileNotFoundError(
+        "No matching FLUXMET_DD daily files found in data/raw."
+    )
+flux_daily = pd.concat(flux_parts, ignore_index=True)
+flux_daily["year"] = flux_daily["date"].dt.year
+
+annual_flux = (
+    flux_daily.groupby(["site_id", "year"], as_index=False)
+    .agg(
+        n_days=("date", "nunique"),
+        n_ta=("TA_F", "count"),
+        ta_mean_C=("TA_F", "mean"),
+        ta_qc_fraction=("TA_F_QC", "mean"),
+        n_precip=("P_F", "count"),
+        precip_sum_mm=("P_F", "sum"),
+        precip_qc_fraction=("P_F_QC", "mean"),
+    )
+)
+annual_flux["ta_missing_days"] = annual_flux["n_days"] - annual_flux["n_ta"]
+annual_flux["precip_missing_days"] = annual_flux["n_days"] - annual_flux["n_precip"]
+annual = annual_flux.merge(worldclim, on="site_id", how="left", validate="many_to_one")
+annual["temp_anomaly_C"] = annual["ta_mean_C"] - annual["BIO1"]
+annual["precip_anomaly_mm"] = annual["precip_sum_mm"] - annual["BIO12"]
+
+era_daily_parts = []
+era_dir = PROJECT_ROOT / "data" / "external" / "era5land"
+for site_id in SITE_IDS:
+    era_path = era_dir / f"{site_id}_era5land_daily.csv"
+    if not era_path.exists():
+        continue
+    era_daily = pd.read_csv(era_path, parse_dates=["date"])
+    if "t2m_C" not in era_daily.columns:
+        raise ValueError(f"Expected t2m_C in {era_path}")
+    era_daily = era_daily[["date", "site_id", "t2m_C"]].copy()
+    era_daily["year"] = era_daily["date"].dt.year
+    era_years = (
+        era_daily.groupby(["site_id", "year"], as_index=False)
+        .agg(
+            era5_days=("t2m_C", "count"),
+            era5_mean_C=("t2m_C", "mean"),
+        )
+    )
+    era_daily_parts.append(era_years)
+
+if era_daily_parts:
+    era_annual = pd.concat(era_daily_parts, ignore_index=True)
+else:
+    era_annual = pd.DataFrame(
+        columns=["site_id", "year", "era5_days", "era5_mean_C"]
+    )
+
+annual = annual.merge(
+    era_annual, on=["site_id", "year"], how="left", validate="one_to_one"
+)
+annual["era5_anomaly_C"] = annual["era5_mean_C"] - annual["BIO1"]
+```
+
+Table @tbl-sites describes the two gridded datasets at each tower and the
+available FLUXNET record. A blank ERA5-Land period means that the file had no
+valid daily 2 m temperature values for that tower.
+
+```{python}
+#| label: tbl-sites
+#| tbl-cap: "WorldClim normals and data coverage at the five selected towers."
+
+coverage = (
+    annual.groupby("site_id", as_index=False)
+    .agg(
+        flux_first_year=("year", "min"),
+        flux_last_year=("year", "max"),
+        flux_years=("year", "nunique"),
+        flux_days=("n_days", "sum"),
+        ta_missing_days=("ta_missing_days", "sum"),
+        precip_missing_days=("precip_missing_days", "sum"),
+        mean_TA_QC=("ta_qc_fraction", "mean"),
+        mean_P_QC=("precip_qc_fraction", "mean"),
+    )
+)
+
+valid_era = annual.dropna(subset=["era5_anomaly_C"])
+era_coverage = (
+    valid_era.groupby("site_id", as_index=False)
+    .agg(
+        era5_first_year=("year", "min"),
+        era5_last_year=("year", "max"),
+        era5_years=("year", "nunique"),
+        era5_valid_days=("era5_days", "sum"),
+        mean_era5_temp_C=("era5_mean_C", "mean"),
+        mean_era5_departure_C=("era5_anomaly_C", "mean"),
+    )
+)
+site_summary = (
+    worldclim.merge(coverage, on="site_id", how="left", validate="one_to_one")
+    .merge(era_coverage, on="site_id", how="left", validate="one_to_one")
+)
+site_summary["era5_years"] = site_summary["era5_years"].fillna(0).astype(int)
+site_summary["era5_valid_days"] = site_summary["era5_valid_days"].fillna(0).astype(int)
+
+site_summary[
+    [
+        "site_id",
+        "BIO1",
+        "BIO12",
+        "flux_first_year",
+        "flux_last_year",
+        "flux_years",
+        "flux_days",
+        "ta_missing_days",
+        "precip_missing_days",
+        "mean_TA_QC",
+        "mean_P_QC",
+        "era5_first_year",
+        "era5_last_year",
+        "era5_years",
+        "era5_valid_days",
+        "mean_era5_temp_C",
+        "mean_era5_departure_C",
+    ]
+].round(2)
+```
+
+Each tower has its own WorldClim normals. The WorldClim file contains all five
+towers. ERA5-Land has complete daily data for its available periods at
+AU-TTE, BE-Bra, CH-Oe1, and US-MN2. The JP-Ynf file has 3,652 dates, but all
+`t2m_C` values are missing. I leave them missing and do not fill them from
+another dataset or tower.
+
+# E3. Methods
+
+**Download and extraction.** WorldClim BIO1 and BIO12 were sampled from the
+nearest 5′ grid cells using the tower coordinates in EPSG:4326. ERA5-Land
+daily data were requested from the nearest 0.1° grid cell for the last 10
+available years, using coordinates rounded to three decimal places. The
+analysis settings were unchanged, and the only local script edit replaced the
+example CDS-key text with a placeholder.
+
+**Flux preparation and quality control.** I read the daily `FLUXMET_DD` files
+from the five original ZIP files and treated `-9999` as missing. Annual air
+temperature is the mean of daily `TA_F` (°C). Annual precipitation is the sum
+of daily `P_F` (mm). For each year, I calculated the mean daily
+`TA_F_QC` and `P_F_QC` values. The merge script does not include these QC
+columns, so I read them from the original daily files. The data contain
+25,202 tower-days and 69 complete site-years. There are no missing `TA_F` or
+`P_F` values.
+
+The first calculation uses all years, regardless of QC. The second keeps
+years with a mean annual QC fraction of at least 0.90. This cutoff is my
+choice, not an official FLUXNET pass/fail rule. QC fractions describe the
+quality of gap-filled data. A year that passes the cutoff can still include
+gap-filled data. I apply the cutoff separately to temperature and
+precipitation.
+
+**Alignment and analysis.** I joined annual FLUXNET values to the WorldClim
+BIO1 and BIO12 values for each tower, using `site_id` and year. Temperature
+departure is `annual mean TA_F − BIO1`. Precipitation departure is
+`annual sum P_F − BIO12`. Positive values mean warmer or wetter conditions
+than that tower's normal. I averaged ERA5-Land daily `t2m_C` by calendar year
+(UTC) and compared it with BIO1. Missing values stayed as `NA`.
+
+The pooled median gives each site-year equal weight. Towers with longer
+records therefore have more influence. Annual values from one tower may not
+be independent of each other.
+
+# E4. Results
+
+The temperature figure compares annual FLUXNET and ERA5-Land departures from
+each tower's WorldClim normal. The precipitation figure shows FLUXNET
+departures from WorldClim BIO12. The zero line means the value equals the
+WorldClim normal. FLUXNET years below the 0.90 QC cutoff are shown with
+transparent points and dashed lines. All years remain visible.
+
+```{python}
+#| label: temperature-figure
+#| fig-cap: "Annual mean air-temperature departure from each tower's WorldClim BIO1 normal. Circles are FLUXNET annual values and diamonds are ERA5-Land annual values. The zero line indicates the site-specific normal. FLUXNET years with annual QC below 0.90 are semi-transparent and dashed. ERA5-Land is unavailable for JP-Ynf."
+
+fig, axes = plt.subplots(2, 3, figsize=(14, 8), sharey=True, constrained_layout=True)
+for ax, site_id in zip(axes.flat, SITE_IDS):
+    site = annual[annual["site_id"] == site_id].sort_values("year")
+    for i in range(len(site) - 1):
+        first = site.iloc[i]
+        second = site.iloc[i + 1]
+        low_qc = (
+            first["ta_qc_fraction"] < QC_THRESHOLD
+            or second["ta_qc_fraction"] < QC_THRESHOLD
+        )
+        ax.plot(
+            [first["year"], second["year"]],
+            [first["temp_anomaly_C"], second["temp_anomaly_C"]],
+            color=site_colors[site_id],
+            linewidth=1.35,
+            linestyle="--" if low_qc else "-",
+            alpha=0.5 if low_qc else 1,
+            zorder=2,
+        )
+    good = site[site["ta_qc_fraction"] >= QC_THRESHOLD]
+    low = site[site["ta_qc_fraction"] < QC_THRESHOLD]
+    ax.scatter(
+        good["year"], good["temp_anomaly_C"], color=site_colors[site_id],
+        edgecolor=site_colors[site_id], s=38, zorder=4
+    )
+    ax.scatter(
+        low["year"], low["temp_anomaly_C"], color=site_colors[site_id],
+        edgecolor=site_colors[site_id], alpha=0.5, s=38, zorder=4
+    )
+    era = site.dropna(subset=["era5_anomaly_C"])
+    if not era.empty:
+        ax.plot(
+            era["year"], era["era5_anomaly_C"], color="0.25",
+            linestyle=":", linewidth=1.4, marker="D", markersize=4.5, zorder=3
+        )
+    else:
+        ax.text(
+            0.5, 0.53, "ERA5-Land unavailable", transform=ax.transAxes,
+            ha="center", va="center", fontsize=9
+        )
+    ax.axhline(0, color="black", linewidth=0.9, linestyle="--", zorder=1)
+    ax.set_title(site_id)
+    ax.set_xlabel("Year")
+    ax.grid(axis="y", alpha=0.25)
+
+legend_ax = axes.flat[5]
+legend_ax.axis("off")
+legend_ax.legend(
+    handles=[
+        Line2D([0], [0], color="0.25", marker="o", linestyle="-",
+               label="FLUXNET, QC ≥ 0.90"),
+        Line2D([0], [0], color="0.25", marker="o", linestyle="--", alpha=0.5,
+               label="FLUXNET, QC < 0.90"),
+        Line2D([0], [0], color="0.25", marker="D", linestyle=":",
+               label="ERA5-Land"),
+    ],
+    loc="center",
+    title="Annual temperature departure",
+)
+fig.supylabel("Difference from WorldClim mean annual temperature (°C)")
+fig.suptitle("Annual air-temperature difference from WorldClim normal", fontsize=15)
+plt.show()
+```
+
+```{python}
+#| label: precipitation-figure
+#| fig-cap: "Annual FLUXNET precipitation departure from each tower's WorldClim BIO12 normal. The zero line indicates the site-specific normal. Years with annual P_F_QC below 0.90 are semi-transparent and connected with dashed segments. JP-Ynf precipitation values are shown but have P_F_QC = 0 in every year."
+
+fig, axes = plt.subplots(2, 3, figsize=(14, 8), sharey=True, constrained_layout=True)
+for ax, site_id in zip(axes.flat, SITE_IDS):
+    site = annual[annual["site_id"] == site_id].sort_values("year")
+    for i in range(len(site) - 1):
+        first = site.iloc[i]
+        second = site.iloc[i + 1]
+        low_qc = (
+            first["precip_qc_fraction"] < QC_THRESHOLD
+            or second["precip_qc_fraction"] < QC_THRESHOLD
+        )
+        ax.plot(
+            [first["year"], second["year"]],
+            [first["precip_anomaly_mm"], second["precip_anomaly_mm"]],
+            color=site_colors[site_id],
+            linewidth=1.35,
+            linestyle="--" if low_qc else "-",
+            alpha=0.5 if low_qc else 1,
+            zorder=2,
+        )
+    good = site[site["precip_qc_fraction"] >= QC_THRESHOLD]
+    low = site[site["precip_qc_fraction"] < QC_THRESHOLD]
+    ax.scatter(
+        good["year"], good["precip_anomaly_mm"], color=site_colors[site_id],
+        edgecolor=site_colors[site_id], s=38, zorder=4
+    )
+    ax.scatter(
+        low["year"], low["precip_anomaly_mm"], color=site_colors[site_id],
+        edgecolor=site_colors[site_id], alpha=0.5, s=38, zorder=4
+    )
+    ax.axhline(0, color="black", linewidth=0.9, linestyle="--", zorder=1)
+    ax.set_title(site_id)
+    ax.set_xlabel("Year")
+    ax.grid(axis="y", alpha=0.25)
+
+axes.flat[5].axis("off")
+fig.supylabel("Difference from WorldClim annual precipitation (mm/year)")
+fig.suptitle("Annual precipitation difference from WorldClim normal", fontsize=15)
+plt.show()
+```
+
+The table shows medians and means of annual departures. It includes all years
+and a second calculation with annual QC ≥ 0.90.
+
+```{python}
+#| label: anomaly-summary
+#| tbl-cap: "Annual climate departures from WorldClim, with unfiltered and QC ≥ 0.90 summaries."
+
+summary_rows = []
+for variable, value_col, qc_col in [
+    ("Temperature (°C)", "temp_anomaly_C", "ta_qc_fraction"),
+    ("Precipitation (mm/year)", "precip_anomaly_mm", "precip_qc_fraction"),
+]:
+    for label, subset in [
+        ("No QC filter", annual),
+        ("Annual QC ≥ 0.90", annual[annual[qc_col] >= QC_THRESHOLD]),
+    ]:
+        valid = subset.dropna(subset=[value_col])
+        summary_rows.append(
+            {
+                "Variable": variable,
+                "Version": label,
+                "Site-years (n)": len(valid),
+                "Towers (n)": valid["site_id"].nunique(),
+                "Pooled mean": valid[value_col].mean(),
+                "Pooled median": valid[value_col].median(),
+            }
+        )
+summary_table = pd.DataFrame(summary_rows)
+summary_table.round(2)
+```
+
+Without QC filtering, the median departure is **+0.50 °C** for temperature
+(69 site-years, five towers) and **+34.91 mm/year** for precipitation
+(69 site-years, five towers). With annual QC ≥ 0.90, the medians are
+**+0.64 °C** (54 site-years, five towers) and **−8.93 mm/year**
+(47 site-years, four towers). These results describe the available site-years.
+They are not estimates of a global climate trend.
+
+The unfiltered means are **+0.48 °C** and **+736.65 mm/year**. The high
+precipitation mean is mainly caused by the unreliable JP-Ynf precipitation
+data. At JP-Ynf, `P_F_QC` is zero in all ten years, so no years from this site
+pass the precipitation QC cutoff. I include the unfiltered result for
+comparison, but it should not be treated as reliable.
+
+As a second temperature check, the median of the four tower means for
+ERA5-Land is **+1.04 °C** (38 site-years). JP-Ynf has no valid ERA5-Land data.
+The other four tower means are above their WorldClim normals. ERA5-Land does
+not provide precipitation data for this analysis.
+
+# E5. Discussion
+
+The temperature results support the hypothesis at most towers. The
+QC-filtered median is above the WorldClim normal, and all four towers with
+ERA5-Land data also have positive mean departures. Not every year is warmer
+than normal. Most annual temperature departures at JP-Ynf are below its
+normal. Precipitation departures differ among towers and years. The unfiltered
+result is affected by JP-Ynf, where precipitation QC is zero. WorldClim and
+ERA5-Land grid cells are about 9 km wide. This is much larger than the
+approximate 100 m–1 km tower footprint, so grid values may not match the
+conditions near a tower. WorldClim describes 1970–2000, while tower records
+cover different years from 1999 to 2025. These results show differences from
+an older normal, not a trend based on the same years. The main limits are
+missing ERA5-Land temperature for JP-Ynf, poor precipitation QC there, the
+chosen 0.90 cutoff, and the small number of towers. Values from different
+years at one tower may not be independent.
+
+# E6. Data and citations
+
+**FLUXNET data product citations by site:**
+
+- AU-TTE: Griebel, A. & Lieff, N. (2026). *Ti Tree East FLUXNET Release
+  2026_r1*. Version 2026_r1. Terrestrial Ecosystem Research Network (TERN),
+  dataset.
+- BE-Bra: Janssens, I., Bresseleers, S., De Meulder, T., Lefevre, L., Naseer,
+  M., Roland, M., Segers, J., Van Look, J. & Vande Sompele, A. (2026).
+  *Fluxnet Archive Product from Brasschaat, 1999–2025*. FLUXNET.
+  <https://hdl.handle.net/11676/jqFMpuyScNG1HdiOILFit4Dh>
+- CH-Oe1: Ammann, C. (2026). *Fluxnet Archive Product from Oensingen
+  grassland, 2002–2011*. FLUXNET.
+  <https://hdl.handle.net/11676/Yhvt49ceMFBoaJhA4RgbYQf4>
+- JP-Ynf: Matsumoto, K., Takashima, A. & Taniguchi, S. (2026). *Fluxnet
+  Archive Product from Yona-Field Tower Site, 2013–2022*. FLUXNET.
+  <https://hdl.handle.net/11676/Z6-dU8nagfkiCVVyjdnFCe5b>
+- US-MN2: Helseth, C. & Johnson, J. (2026). *AmeriFlux FLUXNET-1F US-MN2
+  Morris: Corn-Soybean-Wheat with Cover Crops, Minimal Tillage*, v1.3_r1
+  (2017–2024). AmeriFlux AMP.
+  <https://doi.org/10.17190/AMF/2571146>
+
+Pastorello, G. et al. (2020). The FLUXNET2015 dataset and the ONEFlux
+processing pipeline for eddy covariance data. *Scientific Data*, 7, 225.
+<https://doi.org/10.1038/s41597-020-0534-3>
+
+Fick, S. E. & Hijmans, R. J. (2017). WorldClim 2: new 1-km spatial resolution
+climate surfaces for global land areas. *International Journal of
+Climatology*, 37, 4302–4315. <https://doi.org/10.1002/joc.5086>
+
+Muñoz-Sabater, J. et al. (2021). ERA5-Land: a state-of-the-art global
+reanalysis dataset for land applications. *Earth System Science Data*, 13,
+4349–4383. <https://doi.org/10.5194/essd-13-4349-2021>
+
+Contains modified Copernicus Climate Change Service information 2026.
+
+**AI assistance:** GitHub Copilot was used to help with coding, data analysis,
+and report writing.
+
+**FLUXNET acknowledgement:** FLUXNET data products were produced and
+harmonized by eddy covariance regional networks and data processing centers,
+including AmeriFlux, ChinaFlux, European Fluxes Database, ICOS, JapanFlux,
+KoFlux, OzFlux, SAEON, and TERN. These products also include a modified
+version of ERA5 hourly data provided by the Copernicus Climate Change Service.
+
+To render from the project root, with the five FLUXNET ZIPs in `data/raw` and
+the WorldClim and ERA5-Land downloads in `data/external`, run:
+
+```bash
+quarto render reports/block5_question.qmd
+```

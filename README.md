@@ -123,6 +123,18 @@ quarto render reports/block4_data_summary.qmd
 The Python report environment needs pandas, matplotlib, and Jupyter. Install them
 in the selected Python environment with `python -m pip install pandas matplotlib jupyter`.
 
+## Block 5 report
+
+The report source is [reports/block5_question.qmd](reports/block5_question.qmd).
+With the FLUXNET ZIPs in `data/raw/` and the WorldClim and ERA5-Land downloads in
+`data/external/`, render the embedded HTML report with:
+
+```bash
+quarto render reports/block5_question.qmd
+```
+
+The report uses the same Python environment as the Block 4 report.
+
 ## Getting new material every week: `upstream`
 
 Your fork is a copy of the course repository *from the day you forked it*. New material (assignment sheets, scripts) does **not** appear in your fork by itself, and `git pull` alone only talks to your fork (`origin`). You bring new material from the course repository (`upstream`):
